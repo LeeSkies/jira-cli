@@ -3,3 +3,4 @@ jira-cli
 package-lock.json
 tsconfig.json
 index.js
+*.js
