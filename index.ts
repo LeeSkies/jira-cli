@@ -137,17 +137,18 @@ async function createSubtask(parentId: string, summary: string, description: str
 }
 
 async function deleteTask(taskId: string, task: JiraTask) {
-    console.log(chalk.yellow('\nTask to delete:'));
-    console.log(chalk.white(`ID: ${task.key}`));
-    console.log(chalk.white(`Type: ${task.fields.issuetype.name}`));
-    console.log(chalk.white(`Summary: ${task.fields.summary}`));
-    console.log(chalk.white(`Description: ${task.fields.description || 'No description'}`));
-    console.log(); // Empty line for better readability
+    console.log(chalk.red('\n=== DELETE TASK ==='));
+    console.log(chalk.red('Task to delete:'));
+    console.log(chalk.red(`ID: ${task.key}`));
+    console.log(chalk.red(`Type: ${task.fields.issuetype.name}`));
+    console.log(chalk.red(`Summary: ${task.fields.summary}`));
+    console.log(chalk.red(`Description: ${task.fields.description || 'No description'}`));
+    console.log(chalk.red('==================\n'));
 
     const { confirm } = await inquirer.prompt([{
         type: 'confirm',
         name: 'confirm',
-        message: 'Are you sure you want to delete this task?',
+        message: chalk.red('⚠️  Are you sure you want to delete this task? This action cannot be undone.'),
         default: false
     }]);
 
@@ -163,8 +164,68 @@ async function deleteTask(taskId: string, task: JiraTask) {
     }
 }
 
+async function isGitRepo(): Promise<boolean> {
+    const process = require('child_process');
+    return new Promise((resolve) => {
+        process.exec('git rev-parse --is-inside-work-tree', (error: any) => {
+            resolve(!error);
+        });
+    });
+}
+
+async function getCurrentBranch(): Promise<string> {
+    const process = require('child_process');
+    return new Promise((resolve, reject) => {
+        process.exec('git branch --show-current', (error: any, stdout: string) => {
+            if (error) reject(error);
+            resolve(stdout.trim());
+        });
+    });
+}
+
+async function branchExists(branchName: string): Promise<boolean> {
+    const process = require('child_process');
+    return new Promise((resolve) => {
+        process.exec(`git branch --list ${branchName}`, (error: any, stdout: string) => {
+            resolve(stdout.trim() !== '');
+        });
+    });
+}
+
+async function createBranch(branchName: string): Promise<void> {
+    const process = require('child_process');
+    return new Promise((resolve, reject) => {
+        process.exec(`git checkout -b ${branchName}`, (error: any) => {
+            if (error) reject(error);
+            resolve();
+        });
+    });
+}
+
+async function switchToBranch(branchName: string): Promise<void> {
+    const process = require('child_process');
+    return new Promise((resolve, reject) => {
+        process.exec(`git checkout ${branchName}`, (error: any) => {
+            if (error) reject(error);
+            resolve();
+        });
+    });
+}
+
+async function deleteBranch(branchName: string): Promise<void> {
+    const process = require('child_process');
+    return new Promise((resolve, reject) => {
+        process.exec(`git branch -D ${branchName}`, (error: any) => {
+            if (error) reject(error);
+            resolve();
+        });
+    });
+}
+
 async function showTaskActions(task: JiraTask) {
+    const isGitAvailable = await isGitRepo();
     const isSubtask = task.fields.issuetype.name === 'Subtask' || task.fields.issuetype?.subtask === true;
+    
     const { action } = await inquirer.prompt([{
         type: 'list',
         name: 'action',
@@ -177,7 +238,22 @@ async function showTaskActions(task: JiraTask) {
                 value: 'subtask',
                 disabled: isSubtask
             },
-            { name: 'Delete', value: 'delete' }
+            { name: chalk.red('Delete'), value: 'delete' },
+            { 
+                name: 'Create Branch',
+                value: 'create-branch',
+                disabled: !isGitAvailable
+            },
+            { 
+                name: 'Go to Branch',
+                value: 'goto-branch',
+                disabled: !isGitAvailable
+            },
+            { 
+                name: chalk.red('Delete Branch'),
+                value: 'delete-branch',
+                disabled: !isGitAvailable
+            }
         ]
     }]);
 
@@ -236,7 +312,108 @@ async function showTaskActions(task: JiraTask) {
         case 'delete':
             await deleteTask(task.key, task);
             break;
+
+        case 'create-branch':
+            try {
+                const branchName = isSubtask ? await createSubtaskBranchName(task) : task.key;
+                if (await branchExists(branchName)) {
+                    console.log(chalk.yellow(`Branch '${branchName}' already exists.`));
+                    return;
+                }
+                await createBranch(branchName);
+                console.log(chalk.green(`Created and switched to branch '${branchName}'`));
+            } catch (error: any) {
+                console.error(chalk.red(`Error creating branch: ${error.message}`));
+            }
+            break;
+
+        case 'goto-branch':
+            try {
+                const branchName = isSubtask ? await createSubtaskBranchName(task) : task.key;
+                if (!await branchExists(branchName)) {
+                    console.log(chalk.yellow(`Branch '${branchName}' does not exist.`));
+                    return;
+                }
+                const currentBranch = await getCurrentBranch();
+                if (currentBranch === branchName) {
+                    console.log(chalk.yellow(`Already on branch '${branchName}'`));
+                    return;
+                }
+                await switchToBranch(branchName);
+                console.log(chalk.green(`Switched to branch '${branchName}'`));
+            } catch (error: any) {
+                console.error(chalk.red(`Error switching branch: ${error.message}`));
+            }
+            break;
+
+        case 'delete-branch':
+            try {
+                const branchName = isSubtask ? await createSubtaskBranchName(task) : task.key;
+                if (!await branchExists(branchName)) {
+                    console.log(chalk.yellow(`Branch '${branchName}' does not exist.`));
+                    return;
+                }
+                
+                const currentBranch = await getCurrentBranch();
+                if (currentBranch === branchName) {
+                    console.log(chalk.red(`Cannot delete the current branch '${branchName}'`));
+                    return;
+                }
+
+                const { confirm } = await inquirer.prompt([{
+                    type: 'confirm',
+                    name: 'confirm',
+                    message: chalk.red(`Are you sure you want to delete branch '${branchName}'?`),
+                    default: false
+                }]);
+
+                if (confirm) {
+                    await deleteBranch(branchName);
+                    console.log(chalk.green(`Branch '${branchName}' deleted successfully`));
+                }
+            } catch (error: any) {
+                console.error(chalk.red(`Error deleting branch: ${error.message}`));
+            }
+            break;
     }
+}
+
+async function createSubtaskBranchName(task: JiraTask): Promise<string> {
+    const { type, details } = await inquirer.prompt([
+        {
+            type: 'list',
+            name: 'type',
+            message: 'Select the branch type:',
+            choices: [
+                'fix',
+                'feat',
+                'build',
+                'chore',
+                'ci',
+                'docs',
+                'style',
+                'refactor',
+                'perf',
+                'test'
+            ]
+        },
+        {
+            type: 'input',
+            name: 'details',
+            message: 'Enter additional details (optional):',
+            validate: (input: string) => {
+                // Only allow alphanumeric characters, dashes, and underscores
+                if (input && !/^[a-zA-Z0-9-_]*$/.test(input)) {
+                    return 'Details can only contain letters, numbers, dashes, and underscores';
+                }
+                return true;
+            }
+        }
+    ]);
+
+    return details ? 
+        `${type}/${task.key}/${details}` : 
+        `${type}/${task.key}`;
 }
 
 program
