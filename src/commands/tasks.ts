@@ -45,42 +45,7 @@ export class TasksCommand {
         return confirm;
     }
 
-    async createSubtaskBranchName(task: JiraTask): Promise<string> {
-        const { type, details } = await inquirer.prompt([
-            {
-                type: 'list',
-                name: 'type',
-                message: 'Select the branch type:',
-                choices: [
-                    'fix',
-                    'feat',
-                    'build',
-                    'chore',
-                    'ci',
-                    'docs',
-                    'style',
-                    'refactor',
-                    'perf',
-                    'test'
-                ]
-            },
-            {
-                type: 'input',
-                name: 'details',
-                message: 'Enter additional details (optional):',
-                validate: (input: string) => {
-                    if (input && !/^[a-zA-Z0-9-_]*$/.test(input)) {
-                        return 'Details can only contain letters, numbers, dashes, and underscores';
-                    }
-                    return true;
-                }
-            }
-        ]);
-
-        return details ? `${type}/${task.key}/${details}` : `${type}/${task.key}`;
-    }
-
-    async showTaskActions(task: JiraTask) {
+    async showTaskActions(task: JiraTask): Promise<'back' | void> {
         const isGitAvailable = await this.gitService.isGitRepo();
         const isSubtask = task.fields.issuetype.name === 'Subtask' || task.fields.issuetype?.subtask === true;
         
@@ -97,6 +62,7 @@ export class TasksCommand {
                     disabled: isSubtask
                 },
                 { name: chalk.red('Delete'), value: 'delete' },
+                new inquirer.Separator('Git Actions'),
                 { 
                     name: 'Create Branch',
                     value: 'create-branch',
@@ -111,11 +77,16 @@ export class TasksCommand {
                     name: chalk.red('Delete Branch'),
                     value: 'delete-branch',
                     disabled: !isGitAvailable
-                }
+                },
+                new inquirer.Separator(),
+                { name: 'Back to Tasks List', value: 'back' }
             ]
         }]);
 
         switch (action) {
+            case 'back':
+                return 'back';
+
             case 'view':
                 await this.showTaskDetails(task);
                 break;
@@ -166,7 +137,7 @@ export class TasksCommand {
 
             case 'create-branch':
                 try {
-                    const branchName = isSubtask ? await this.createSubtaskBranchName(task) : task.key;
+                    const branchName = task.key;
                     if (await this.gitService.branchExists(branchName)) {
                         console.log(chalk.yellow(`Branch '${branchName}' already exists.`));
                         return;
@@ -180,7 +151,7 @@ export class TasksCommand {
 
             case 'goto-branch':
                 try {
-                    const branchName = isSubtask ? await this.createSubtaskBranchName(task) : task.key;
+                    const branchName = task.key;
                     if (!await this.gitService.branchExists(branchName)) {
                         console.log(chalk.yellow(`Branch '${branchName}' does not exist.`));
                         return;
@@ -199,7 +170,7 @@ export class TasksCommand {
 
             case 'delete-branch':
                 try {
-                    const branchName = isSubtask ? await this.createSubtaskBranchName(task) : task.key;
+                    const branchName = task.key;
                     if (!await this.gitService.branchExists(branchName)) {
                         console.log(chalk.yellow(`Branch '${branchName}' does not exist.`));
                         return;
@@ -276,23 +247,29 @@ export class TasksCommand {
                     await this.showTaskActions(task);
                 }
             } else {
-                const tasks = await this.jiraService.getTasks();
-                if (tasks.length === 0) {
-                    console.log(chalk.yellow('No tasks found.'));
-                    return;
+                let shouldShowTasks = true;
+                while (shouldShowTasks) {
+                    const tasks = await this.jiraService.getTasks();
+                    if (tasks.length === 0) {
+                        console.log(chalk.yellow('No tasks found.'));
+                        return;
+                    }
+
+                    const { selectedTask } = await inquirer.prompt([{
+                        type: 'list',
+                        name: 'selectedTask',
+                        message: 'Select a task:',
+                        choices: tasks.map(t => ({
+                            name: `${t.key}: ${t.fields.summary}${t.fields.issuetype.name === 'Subtask' ? chalk.yellow(' [Subtask]') : ''}`,
+                            value: t
+                        }))
+                    }]);
+
+                    const result = await this.showTaskActions(selectedTask);
+                    if (result !== 'back') {
+                        shouldShowTasks = false;
+                    }
                 }
-
-                const { selectedTask } = await inquirer.prompt([{
-                    type: 'list',
-                    name: 'selectedTask',
-                    message: 'Select a task:',
-                    choices: tasks.map(t => ({
-                        name: `${t.key}: ${t.fields.summary}${t.fields.issuetype.name === 'Subtask' ? chalk.yellow(' [Subtask]') : ''}`,
-                        value: t
-                    }))
-                }]);
-
-                await this.showTaskActions(selectedTask);
             }
         } catch (error: any) {
             console.error(chalk.red(`Error: ${error.message}`));
