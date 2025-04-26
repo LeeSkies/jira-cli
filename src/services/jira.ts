@@ -1,7 +1,8 @@
 import ConfigStore from 'configstore';
 import { JiraConfig, JiraTask } from '../types';
 import chalk from 'chalk';
-import open from 'open';
+import { spawn, type ChildProcess, type SpawnOptions } from 'child_process';
+import { platform } from 'os';
 
 export class JiraService {
     private config: ConfigStore;
@@ -154,6 +155,63 @@ export class JiraService {
         }
     }
 
+    private openUrl(url: string): void {
+        const isWin = platform() === 'win32';
+        const isMac = platform() === 'darwin';
+        
+        // Detach the process so it runs independently
+        const options: SpawnOptions = {
+            detached: true,
+            stdio: ['ignore', 'ignore', 'ignore']
+        };
+
+        let cmd: string;
+        let args: string[];
+
+        if (isWin) {
+            // Escape the URL for Windows command line
+            const escapedUrl = `"${url.replace(/"/g, '""')}"`;
+            cmd = 'cmd.exe';
+            args = ['/c', 'start', '', escapedUrl];  // Empty string as title parameter
+        } else if (isMac) {
+            cmd = 'open';
+            args = [url];
+        } else {
+            // Linux - try x-www-browser first
+            cmd = 'x-www-browser';
+            args = [url];
+        }
+
+        const child = spawn(cmd, args, options) as ChildProcess;
+        child.unref(); // Let the process run independently
+
+        // If first attempt fails on Linux, try alternative browsers
+        if (!isWin && !isMac) {
+            child.on('error', () => {
+                const browsers = [
+                    'firefox',
+                    'google-chrome',
+                    'chromium',
+                    'chromium-browser',
+                    'brave-browser',
+                    'opera'
+                ];
+
+                // Try each browser in sequence until one works
+                for (const browser of browsers) {
+                    const altChild = spawn(browser, [url], options) as ChildProcess;
+                    altChild.unref();
+                    
+                    // Break on first successful spawn
+                    altChild.on('error', () => {});
+                    altChild.on('spawn', () => {
+                        return; // Exit the loop on first successful spawn
+                    });
+                }
+            });
+        }
+    }
+
     getTaskUrl(taskKey: string): string {
         const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
         return `${jiraConfig.baseUrl}/browse/${taskKey}`;
@@ -162,8 +220,8 @@ export class JiraService {
     async openInBrowser(taskKey: string) {
         try {
             const url = this.getTaskUrl(taskKey);
-            await open(url);
-            console.log(chalk.green(`Opened ${taskKey} in your browser`));
+            this.openUrl(url);
+            console.log(chalk.green(`Opening ${taskKey} in your browser`));
         } catch (error: any) {
             console.error(chalk.red(`Error opening task in browser: ${error.message}`));
         }

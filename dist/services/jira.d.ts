@@ -13,6 +13,7 @@ export declare class JiraService {
     deleteTask(taskId: string): Promise<void>;
     addComment(taskId: string, comment: string): Promise<void>;
     changeStatus(taskId: string, transitionId: string): Promise<void>;
+    private openUrl;
     getTaskUrl(taskKey: string): string;
     openInBrowser(taskKey: string): Promise<void>;
     saveConfig(config: JiraConfig): void;
