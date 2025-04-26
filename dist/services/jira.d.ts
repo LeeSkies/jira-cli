@@ -16,4 +16,11 @@ export declare class JiraService {
     getTaskUrl(taskKey: string): string;
     openInBrowser(taskKey: string): Promise<void>;
     saveConfig(config: JiraConfig): void;
+    searchTasks(query: string): Promise<JiraTask[]>;
+    getTasksByStatus(status: string): Promise<JiraTask[]>;
+    getAllTasks(): Promise<JiraTask[]>;
+    getAvailableStatuses(): Promise<string[]>;
+    getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']>;
+    searchUsers(query: string, projectKey?: string): Promise<any[]>;
+    assignTask(taskId: string, accountId: string): Promise<void>;
 }

@@ -12,7 +12,8 @@
     "dev": "ts-node src/index.ts",
     "watch": "tsc -w",
     "prepare": "npm run build",
-    "link": "npm link"
+    "link": "npm link",
+    "pkg": "tsc && pkg . --target node18-linux-x64 --output jira-cli"
   },
   "keywords": [
     "jira",
@@ -41,5 +42,8 @@
     "@types/node": "^22.15.2",
     "@types/table": "^6.0.0",
     "typescript": "^5.8.3"
+  },
+  "pkg": {
+    "scripts": "dist/**/*.js"
   }
 }
