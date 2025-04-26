@@ -5,7 +5,6 @@ export declare class TasksCommand {
     constructor();
     showTaskDetails(task: JiraTask): Promise<void>;
     confirmDelete(task: JiraTask): Promise<boolean>;
-    createSubtaskBranchName(task: JiraTask): Promise<string>;
-    showTaskActions(task: JiraTask): Promise<void>;
+    showTaskActions(task: JiraTask): Promise<'back' | void>;
     execute(taskId?: string, options?: any): Promise<void>;
 }

@@ -11,5 +11,9 @@ export declare class JiraService {
     }): Promise<void>;
     createSubtask(parentId: string, summary: string, description: string): Promise<any>;
     deleteTask(taskId: string): Promise<void>;
+    addComment(taskId: string, comment: string): Promise<void>;
+    changeStatus(taskId: string, transitionId: string): Promise<void>;
+    getTaskUrl(taskKey: string): string;
+    openInBrowser(taskKey: string): Promise<void>;
     saveConfig(config: JiraConfig): void;
 }

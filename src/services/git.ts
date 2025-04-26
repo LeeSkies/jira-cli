@@ -63,4 +63,15 @@ export class GitService {
             await this.switchToBranch(currentBranch);
         }
     }
+
+    async commit(message: string): Promise<void> {
+        try {
+            // First stage all changes
+            await execAsync('git add .');
+            // Then commit with the provided message
+            await execAsync(`git commit -m "${message}"`);
+        } catch (error: any) {
+            throw new Error(`Failed to commit: ${error.message}`);
+        }
+    }
 }

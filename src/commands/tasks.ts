@@ -13,17 +13,78 @@ export class TasksCommand {
         this.gitService = new GitService();
     }
 
+    private setupKeyboardShortcuts(callback: () => void) {
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+        }
+        
+        const handler = (key: Buffer) => {
+            // Ctrl+B is represented as \x02 in raw mode
+            if (key.toString() === '\x02') {
+                process.stdin.removeListener('data', handler);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
+                console.log(chalk.yellow('\nOperation cancelled'));
+                callback();
+            }
+        };
+        
+        process.stdin.addListener('data', handler);
+        return () => {
+            process.stdin.removeListener('data', handler);
+            if (process.stdin.isTTY) {
+                process.stdin.setRawMode(false);
+            }
+        };
+    }
+
     async showTaskDetails(task: JiraTask) {
-        console.log(chalk.blue('\nTask Details:'));
-        console.log(chalk.white(`ID: ${task.key}`));
-        console.log(chalk.white(`Summary: ${task.fields.summary}`));
-        console.log(chalk.white(`Description: ${task.fields.description || 'No description'}`));
+        console.log(chalk.blue('\n=== Task Details ==='));
+        console.log(`${chalk.blue('ID:')} ${task.key}`);
+        console.log(`${chalk.blue('Type:')} ${task.fields.issuetype.name}`);
+        console.log(`${chalk.blue('Status:')} ${task.fields.status.name}`);
+        console.log(`${chalk.blue('Summary:')} ${task.fields.summary}`);
+        console.log(`${chalk.blue('Description:')} ${task.fields.description || 'No description'}`);
+
+        if (task.fields.parent) {
+            console.log(chalk.blue('\nParent Task:'));
+            console.log(`  ${chalk.blue('Key:')} ${task.fields.parent.key}`);
+            console.log(`  ${chalk.blue('Summary:')} ${task.fields.parent.fields.summary}`);
+        }
+
+        const attachments = task.fields.attachment;
+        if (attachments?.total && attachments.total > 0) {
+            console.log(chalk.blue('\nAttachments:'));
+            console.log(`  ${chalk.blue('Total:')} ${attachments.total}`);
+        }
+
         if (task.fields.subtasks.length > 0) {
             console.log(chalk.blue('\nSubtasks:'));
             for (const subtask of task.fields.subtasks) {
-                console.log(chalk.white(`- ${subtask.key}: ${subtask.fields.summary}`));
+                console.log(`  - ${chalk.blue('Key:')} ${subtask.key}`);
+                console.log(`    ${chalk.blue('Summary:')} ${subtask.fields.summary}`);
             }
         }
+
+        const sprint = task.fields.customfield_10020?.[0];
+        if (sprint) {
+            console.log(chalk.blue('\nSprint:'));
+            console.log(`  ${chalk.blue('Name:')} ${sprint.name}`);
+            console.log(`  ${chalk.blue('State:')} ${sprint.state}`);
+        }
+
+        const comments = task.fields.comment?.comments ?? [];
+        if (comments.length > 0) {
+            console.log(chalk.blue('\nComments:'));
+            for (const comment of comments) {
+                console.log(`\n  ${chalk.blue('Author:')} ${comment.author.displayName}`);
+                console.log(`  ${chalk.blue('Date:')} ${new Date(comment.created).toLocaleString()}`);
+                console.log(`  ${chalk.blue('Content:')} ${comment.body}`);
+            }
+        }
+
+        console.log(chalk.blue('\n==================\n'));
     }
 
     async confirmDelete(task: JiraTask): Promise<boolean> {
@@ -45,6 +106,40 @@ export class TasksCommand {
         return confirm;
     }
 
+    async assignTask(task: JiraTask): Promise<'back' | void> {
+        const cleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        
+        try {
+            console.log(chalk.blue('\nPress Ctrl+B at any time to cancel and return to task actions\n'));
+            
+            // Extract project key from task key (e.g., "PROJ-123" -> "PROJ")
+            const projectKey = task.key.split('-')[0];
+            
+            // Get all users without requiring a search
+            console.log(chalk.yellow('\nFetching users...'));
+            const users = await this.jiraService.searchUsers('', projectKey);
+            if (users.length === 0) {
+                console.log(chalk.yellow('\nNo users found'));
+                cleanup();
+                return;
+            }
+
+            const { selectedUser } = await inquirer.prompt([{
+                type: 'list',
+                name: 'selectedUser',
+                message: 'Select user to assign:',
+                choices: users.map(u => ({
+                    name: u.displayName,
+                    value: u.accountId
+                }))
+            }]);
+
+            await this.jiraService.assignTask(task.key, selectedUser);
+        } finally {
+            cleanup();
+        }
+    }
+
     async showTaskActions(task: JiraTask): Promise<'back' | void> {
         const isGitAvailable = await this.gitService.isGitRepo();
         const isSubtask = task.fields.issuetype.name === 'Subtask' || task.fields.issuetype?.subtask === true;
@@ -53,16 +148,20 @@ export class TasksCommand {
             type: 'list',
             name: 'action',
             message: 'Select an action:',
+            pageSize: 50,  // Show all options without scrolling
+            loop: false,   // Don't wrap around
             choices: [
                 { name: 'View Details', value: 'view' },
+                { name: 'Change Status', value: 'change-status' },
                 { name: 'Update', value: 'update' },
+                { name: 'Assign', value: 'assign' },
+                { name: 'Add Comment', value: 'comment' },
                 { 
                     name: `Add Subtask${isSubtask ? ' (not available)' : ''}`,
                     value: 'subtask',
                     disabled: isSubtask
                 },
-                { name: chalk.red('Delete'), value: 'delete' },
-                new inquirer.Separator('Git Actions'),
+                { name: 'Open in Browser', value: 'open-browser' },
                 { 
                     name: 'Create Branch',
                     value: 'create-branch',
@@ -73,12 +172,17 @@ export class TasksCommand {
                     value: 'goto-branch',
                     disabled: !isGitAvailable
                 },
+                {
+                    name: 'Commit Changes',
+                    value: 'commit',
+                    disabled: !isGitAvailable
+                },
                 { 
                     name: chalk.red('Delete Branch'),
                     value: 'delete-branch',
                     disabled: !isGitAvailable
                 },
-                new inquirer.Separator(),
+                { name: chalk.red('Delete'), value: 'delete' },
                 { name: 'Back to Tasks List', value: 'back' }
             ]
         }]);
@@ -88,26 +192,22 @@ export class TasksCommand {
                 return 'back';
 
             case 'view':
-                await this.showTaskDetails(task);
-                break;
+                return this.view(task);
 
             case 'update':
-                const { summary, description } = await inquirer.prompt([
-                    {
-                        type: 'input',
-                        name: 'summary',
-                        message: 'Enter new summary:',
-                        default: task.fields.summary
-                    },
-                    {
-                        type: 'input',
-                        name: 'description',
-                        message: 'Enter new description:',
-                        default: task.fields.description
-                    }
-                ]);
-                await this.jiraService.updateTask(task.key, { summary, description });
-                break;
+                return this.update(task);
+
+            case 'assign':
+                return this.assignTask(task);
+
+            case 'comment':
+                return this.addComment(task);
+
+            case 'change-status':
+                return this.changeTaskStatus(task);
+
+            case 'commit':
+                return this.commitChanges(task);
 
             case 'subtask':
                 if (isSubtask) {
@@ -197,6 +297,81 @@ export class TasksCommand {
                     console.error(chalk.red(`Error deleting branch: ${error.message}`));
                 }
                 break;
+
+            case 'open-browser':
+                await this.jiraService.openInBrowser(task.key);
+                break;
+        }
+    }
+
+    async getAvailableStatuses(): Promise<string[]> {
+        return this.jiraService.getAvailableStatuses();
+    }
+
+    async search(query: string): Promise<void> {
+        const tasks = await this.jiraService.searchTasks(query);
+        await this.displayAndHandleTasks(tasks);
+    }
+
+    async displayAndHandleTasks(tasks: JiraTask[]): Promise<void> {
+        if (tasks.length === 0) {
+            console.log(chalk.yellow('No tasks found.'));
+            return;
+        }
+
+        let shouldShowTasks = true;
+        while (shouldShowTasks) {
+            const { selectedTask } = await inquirer.prompt([{
+                type: 'list',
+                name: 'selectedTask',
+                message: 'Select a task:',
+                pageSize: 50,  // Show all options without scrolling
+                loop: false,   // Don't wrap around
+                choices: tasks.map(t => {
+                    let name = `${t.key}: ${t.fields.summary}`;
+                    
+                    // Add colored status
+                    const status = t.fields.status.name;
+                    let statusColor;
+                    switch(status.toLowerCase()) {
+                        case 'to do':
+                            statusColor = chalk.yellow;
+                            break;
+                        case 'in progress':
+                            statusColor = chalk.blue;
+                            break;
+                        case 'done':
+                            statusColor = chalk.green;
+                            break;
+                        default:
+                            statusColor = chalk.white;
+                    }
+                    name += ` ${statusColor(`[${status}]`)}`;
+                    
+                    // Add subtask indicator and count if any
+                    if (t.fields.subtasks.length > 0) {
+                        name += chalk.blue(` [${t.fields.subtasks.length} subtasks]`);
+                    }
+                    
+                    // Add subtask indicator and parent info
+                    if (t.fields.issuetype.name === 'Subtask') {
+                        name += chalk.yellow(' [Subtask]');
+                        if (t.fields.parent) {
+                            name += chalk.cyan(` → ${t.fields.parent.key}`);
+                        }
+                    }
+
+                    return {
+                        name,
+                        value: t
+                    };
+                })
+            }]);
+
+            const result = await this.showTaskActions(selectedTask);
+            if (result !== 'back') {
+                shouldShowTasks = false;
+            }
         }
     }
 
@@ -247,32 +422,145 @@ export class TasksCommand {
                     await this.showTaskActions(task);
                 }
             } else {
-                let shouldShowTasks = true;
-                while (shouldShowTasks) {
-                    const tasks = await this.jiraService.getTasks();
-                    if (tasks.length === 0) {
-                        console.log(chalk.yellow('No tasks found.'));
-                        return;
-                    }
-
-                    const { selectedTask } = await inquirer.prompt([{
-                        type: 'list',
-                        name: 'selectedTask',
-                        message: 'Select a task:',
-                        choices: tasks.map(t => ({
-                            name: `${t.key}: ${t.fields.summary}${t.fields.issuetype.name === 'Subtask' ? chalk.yellow(' [Subtask]') : ''}`,
-                            value: t
-                        }))
-                    }]);
-
-                    const result = await this.showTaskActions(selectedTask);
-                    if (result !== 'back') {
-                        shouldShowTasks = false;
-                    }
+                let tasks;
+                if (options.all) {
+                    tasks = await this.jiraService.getAllTasks();
+                } else if (options.status) {
+                    tasks = await this.jiraService.getTasksByStatus(options.status);
+                } else {
+                    tasks = await this.jiraService.getTasks();
                 }
+                await this.displayAndHandleTasks(tasks);
             }
         } catch (error: any) {
             console.error(chalk.red(`Error: ${error.message}`));
+        }
+    }
+
+    async getTask(taskId: string): Promise<JiraTask | null> {
+        return this.jiraService.getTask(taskId);
+    }
+
+    async getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']> {
+        return this.jiraService.getAvailableTransitions(taskId);
+    }
+
+    async changeStatus(taskId: string, transitionId: string): Promise<void> {
+        return this.jiraService.changeStatus(taskId, transitionId);
+    }
+
+    async view(task: JiraTask): Promise<'back' | void> {
+        const viewCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        await this.showTaskDetails(task);
+        viewCleanup();
+    }
+
+    async update(task: JiraTask): Promise<'back' | void> {
+        const updateCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        try {
+            const { summary, description } = await inquirer.prompt([
+                {
+                    type: 'input',
+                    name: 'summary',
+                    message: 'Enter new summary:',
+                    default: task.fields.summary
+                },
+                {
+                    type: 'input',
+                    name: 'description',
+                    message: 'Enter new description:',
+                    default: task.fields.description
+                }
+            ]);
+            await this.jiraService.updateTask(task.key, { summary, description });
+        } finally {
+            updateCleanup();
+        }
+    }
+
+    async addComment(task: JiraTask): Promise<'back' | void> {
+        const commentCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        try {
+            const { comment } = await inquirer.prompt([{
+                type: 'input',
+                name: 'comment',
+                message: 'Enter your comment:',
+                validate: (input) => input.length > 0 || 'Comment cannot be empty'
+            }]);
+            await this.jiraService.addComment(task.key, comment);
+        } finally {
+            commentCleanup();
+        }
+    }
+
+    async changeTaskStatus(task: JiraTask): Promise<'back' | void> {
+        const statusCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        try {
+            const transitions = await this.jiraService.getAvailableTransitions(task.key);
+            if (!transitions?.length) {
+                console.log(chalk.yellow('No status transitions available'));
+                return;
+            }
+
+            const { transitionId } = await inquirer.prompt([{
+                type: 'list',
+                name: 'transitionId',
+                message: 'Select new status:',
+                pageSize: 20,
+                loop: false,
+                choices: transitions.map(t => ({
+                    name: `${t.to.name}${t.to.id === task.fields.status.id ? ' (current)' : ''}`,
+                    value: t.id,
+                    disabled: t.to.id === task.fields.status.id
+                }))
+            }]);
+            await this.jiraService.changeStatus(task.key, transitionId);
+        } finally {
+            statusCleanup();
+        }
+    }
+
+    async commitChanges(task: JiraTask): Promise<'back' | void> {
+        const commitCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        try {
+            const { type } = await inquirer.prompt([{
+                type: 'list',
+                name: 'type',
+                message: 'Select commit type:',
+                choices: [
+                    'fix',
+                    'feat',
+                    'build',
+                    'chore',
+                    'ci',
+                    'docs',
+                    'style',
+                    'refactor',
+                    'perf',
+                    'test'
+                ]
+            }]);
+
+            const { details } = await inquirer.prompt([{
+                type: 'input',
+                name: 'details',
+                message: 'Enter additional details (optional):',
+                validate: (input: string) => {
+                    if (input && !/^[a-zA-Z0-9-_ ]*$/.test(input)) {
+                        return 'Details can only contain letters, numbers, spaces, dashes, and underscores';
+                    }
+                    return true;
+                }
+            }]);
+
+            const commitMessage = details 
+                ? `[${type}] ${task.key} | ${details}`
+                : `[${type}] ${task.key}`;
+
+            await this.gitService.commit(commitMessage);
+            console.log(chalk.green(`Changes committed with message: ${commitMessage}`));
+        } finally {
+            commitCleanup();
         }
     }
 }

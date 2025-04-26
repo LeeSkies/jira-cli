@@ -1,6 +1,7 @@
 import ConfigStore from 'configstore';
 import { JiraConfig, JiraTask } from '../types';
 import chalk from 'chalk';
+import open from 'open';
 
 export class JiraService {
     private config: ConfigStore;
@@ -41,7 +42,9 @@ export class JiraService {
 
     async getTask(taskId: string): Promise<JiraTask | null> {
         try {
-            return await this.fetchFromJira(`issue/${taskId}?fields=summary,description,subtasks,issuetype`);
+            return await this.fetchFromJira(
+                `issue/${taskId}?fields=summary,description,subtasks,issuetype,status,comment,attachment,parent,customfield_10020&expand=transitions`
+            );
         } catch (error: any) {
             console.error(chalk.red(`Error fetching task: ${error.message}`));
             return null;
@@ -54,7 +57,8 @@ export class JiraService {
                 method: 'POST',
                 body: JSON.stringify({
                     jql: 'assignee = currentUser() ORDER BY updated DESC',
-                    fields: ['summary', 'description', 'subtasks', 'issuetype']
+                    fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020'],
+                    expand: ['transitions']
                 })
             });
             return result.issues;
@@ -124,7 +128,146 @@ export class JiraService {
         }
     }
 
+    async addComment(taskId: string, comment: string) {
+        try {
+            await this.fetchFromJira(`issue/${taskId}/comment`, {
+                method: 'POST',
+                body: JSON.stringify({ body: comment })
+            });
+            console.log(chalk.green('Comment added successfully!'));
+        } catch (error: any) {
+            console.error(chalk.red(`Error adding comment: ${error.message}`));
+        }
+    }
+
+    async changeStatus(taskId: string, transitionId: string) {
+        try {
+            await this.fetchFromJira(`issue/${taskId}/transitions`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    transition: { id: transitionId }
+                })
+            });
+            console.log(chalk.green('Status updated successfully!'));
+        } catch (error: any) {
+            console.error(chalk.red(`Error changing status: ${error.message}`));
+        }
+    }
+
+    getTaskUrl(taskKey: string): string {
+        const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
+        return `${jiraConfig.baseUrl}/browse/${taskKey}`;
+    }
+
+    async openInBrowser(taskKey: string) {
+        try {
+            const url = this.getTaskUrl(taskKey);
+            await open(url);
+            console.log(chalk.green(`Opened ${taskKey} in your browser`));
+        } catch (error: any) {
+            console.error(chalk.red(`Error opening task in browser: ${error.message}`));
+        }
+    }
+
     saveConfig(config: JiraConfig) {
         this.config.set('jiraConfig', config);
+    }
+
+    async searchTasks(query: string): Promise<JiraTask[]> {
+        try {
+            const result = await this.fetchFromJira('search', {
+                method: 'POST',
+                body: JSON.stringify({
+                    jql: `text ~ "${query}" ORDER BY updated DESC`,
+                    fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
+                })
+            });
+            return result.issues;
+        } catch (error: any) {
+            console.error(chalk.red(`Error searching tasks: ${error.message}`));
+            return [];
+        }
+    }
+
+    async getTasksByStatus(status: string): Promise<JiraTask[]> {
+        try {
+            const result = await this.fetchFromJira('search', {
+                method: 'POST',
+                body: JSON.stringify({
+                    jql: `status = "${status}" ORDER BY updated DESC`,
+                    fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
+                })
+            });
+            return result.issues;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching tasks by status: ${error.message}`));
+            return [];
+        }
+    }
+
+    async getAllTasks(): Promise<JiraTask[]> {
+        try {
+            const result = await this.fetchFromJira('search', {
+                method: 'POST',
+                body: JSON.stringify({
+                    jql: 'ORDER BY updated DESC',
+                    fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
+                })
+            });
+            return result.issues;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching all tasks: ${error.message}`));
+            return [];
+        }
+    }
+
+    async getAvailableStatuses(): Promise<string[]> {
+        try {
+            const result = await this.fetchFromJira('status');
+            return result.map((status: any) => status.name);
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching statuses: ${error.message}`));
+            return ['To Do', 'In Progress', 'Done']; // Fallback to default statuses
+        }
+    }
+
+    async getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']> {
+        try {
+            const result = await this.fetchFromJira(`issue/${taskId}/transitions`);
+            return result.transitions;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching transitions: ${error.message}`));
+            return [];
+        }
+    }
+
+    async searchUsers(query: string, projectKey?: string): Promise<any[]> {
+        try {
+            const queryParams = new URLSearchParams({
+                maxResults: '1000'  // Get a large number of users
+            });
+            
+            if (projectKey) {
+                queryParams.append('project', projectKey);
+            }
+
+            const users = await this.fetchFromJira(`user/assignable/search?${queryParams.toString()}`);
+            return users;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching users: ${error.message}`));
+            return [];
+        }
+    }
+
+    async assignTask(taskId: string, accountId: string) {
+        try {
+            await this.fetchFromJira(`issue/${taskId}/assignee`, {
+                method: 'PUT',
+                body: JSON.stringify({ accountId })
+            });
+            console.log(chalk.green('Task assigned successfully!'));
+        } catch (error: any) {
+            console.error(chalk.red(`Error assigning task: ${error.message}`));
+        }
     }
 }

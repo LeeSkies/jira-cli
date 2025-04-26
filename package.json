@@ -9,8 +9,6 @@
   "scripts": {
     "build": "tsc",
     "start": "node ./dist/index.js",
-    "pkg": "npm run build && pkg ./dist/index.js --target node18-linux-x64 --output jira-cli",
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node src/index.ts",
     "watch": "tsc -w",
     "prepare": "npm run build",
@@ -29,7 +27,8 @@
     "commander": "^9.0.0",
     "configstore": "^5.0.1",
     "inquirer": "^8.2.0",
-    "inquirer-autocomplete-prompt": "^1.4.0",
+    "keypress": "^0.2.1",
+    "open": "^8.4.0",
     "ora": "^5.4.1",
     "table": "^6.8.0"
   },
@@ -38,6 +37,7 @@
     "@types/configstore": "^6.0.2",
     "@types/inquirer": "^9.0.7",
     "@types/inquirer-autocomplete-prompt": "^3.0.3",
+    "@types/keypress": "^2.0.30",
     "@types/node": "^22.15.2",
     "@types/table": "^6.0.0",
     "typescript": "^5.8.3"
