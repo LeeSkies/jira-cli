@@ -4,7 +4,7 @@
   "description": "A command line tool for Jira",
   "main": "dist/index.js",
   "bin": {
-    "jira": "./dist/index.js"
+    "jira-cli": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
