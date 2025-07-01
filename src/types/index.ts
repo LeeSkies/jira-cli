@@ -2,6 +2,7 @@ export interface JiraConfig {
     email: string;
     apiKey: string;
     baseUrl: string;
+    githubToken?: string;
 }
 
 export interface JiraComment {

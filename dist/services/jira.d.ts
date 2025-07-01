@@ -17,7 +17,7 @@ export declare class JiraService {
     getTaskUrl(taskKey: string): string;
     openInBrowser(taskKey: string): Promise<void>;
     saveConfig(config: JiraConfig): void;
-    searchTasks(query: string): Promise<JiraTask[]>;
+    searchTasks(query: string, exclude?: string): Promise<JiraTask[]>;
     getTasksByStatus(status: string): Promise<JiraTask[]>;
     getAllTasks(): Promise<JiraTask[]>;
     getAvailableStatuses(): Promise<string[]>;

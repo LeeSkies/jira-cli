@@ -7,4 +7,8 @@ export declare class GitService {
     deleteBranch(branchName: string): Promise<void>;
     mergeBranch(sourceBranch: string, targetBranch: string): Promise<void>;
     commit(message: string): Promise<void>;
+    getRemoteUrl(): Promise<string>;
+    getLastCommitMessage(): Promise<string>;
+    getDefaultBranch(): Promise<string>;
+    push(branchName: string): Promise<void>;
 }

@@ -29,6 +29,11 @@ export class ConfigCommand {
                 name: 'apiKey',
                 message: 'Enter your JIRA API key:',
                 validate: (input) => input.length > 0
+            },
+            {
+                type: 'password',
+                name: 'githubToken',
+                message: 'Enter your GitHub Personal Access Token (optional):'
             }
         ]);
 

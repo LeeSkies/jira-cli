@@ -74,4 +74,28 @@ export class GitService {
             throw new Error(`Failed to commit: ${error.message}`);
         }
     }
+
+    async getRemoteUrl(): Promise<string> {
+        const { stdout } = await execAsync('git config --get remote.origin.url');
+        return stdout.trim();
+    }
+
+    async getLastCommitMessage(): Promise<string> {
+        const { stdout } = await execAsync('git log -1 --pretty=%B');
+        return stdout.trim();
+    }
+
+    async getDefaultBranch(): Promise<string> {
+        try {
+            const { stdout } = await execAsync('git symbolic-ref refs/remotes/origin/HEAD');
+            return stdout.trim().split('/').pop() || 'main';
+        } catch {
+            // Fallback for detached HEAD or other issues
+            return 'main';
+        }
+    }
+
+    async push(branchName: string): Promise<void> {
+        await execAsync(`git push -u origin ${branchName}`);
+    }
 }

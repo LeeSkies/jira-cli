@@ -2,15 +2,18 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { JiraService } from '../services/jira';
 import { GitService } from '../services/git';
+import { GithubService } from '../services/github';
 import { JiraTask } from '../types';
 
 export class TasksCommand {
     private jiraService: JiraService;
     private gitService: GitService;
+    private githubService: GithubService;
 
     constructor() {
         this.jiraService = new JiraService();
         this.gitService = new GitService();
+        this.githubService = new GithubService();
     }
 
     private setupKeyboardShortcuts(callback: () => void) {
@@ -37,6 +40,24 @@ export class TasksCommand {
                 process.stdin.setRawMode(false);
             }
         };
+    }
+
+    private async promptAfterAction(task: JiraTask): Promise<'view-again' | 'back'> {
+        const { nextAction } = await inquirer.prompt([{
+            type: 'list',
+            name: 'nextAction',
+            message: 'What next?',
+            choices: [
+                { name: 'View task again', value: 'view-again' },
+                { name: 'Back to tasks list', value: 'back' }
+            ]
+        }]);
+        return nextAction;
+    }
+
+    private validateCommitMessage(message: string, taskKey: string): boolean {
+        const regex = new RegExp(`^\\[(fix|feat|build|chore|ci|docs|style|refactor|perf|test)\\] ${taskKey}( \\| .*)?$`);
+        return regex.test(message);
     }
 
     async showTaskDetails(task: JiraTask) {
@@ -177,6 +198,11 @@ export class TasksCommand {
                     value: 'commit',
                     disabled: !isGitAvailable
                 },
+                {
+                    name: 'Create Pull Request',
+                    value: 'create-pr',
+                    disabled: !isGitAvailable
+                },
                 { 
                     name: chalk.red('Delete Branch'),
                     value: 'delete-branch',
@@ -207,7 +233,12 @@ export class TasksCommand {
                 return this.changeTaskStatus(task);
 
             case 'commit':
-                return this.commitChanges(task);
+                await this.commitChanges(task);
+                return await this.promptAfterAction(task) === 'view-again' ? this.showTaskActions(task) : 'back';
+
+            case 'create-pr':
+                await this.createPullRequest(task);
+                return await this.promptAfterAction(task) === 'view-again' ? this.showTaskActions(task) : 'back';
 
             case 'subtask':
                 if (isSubtask) {
@@ -308,8 +339,8 @@ export class TasksCommand {
         return this.jiraService.getAvailableStatuses();
     }
 
-    async search(query: string): Promise<void> {
-        const tasks = await this.jiraService.searchTasks(query);
+    async search(query: string, exclude?: string): Promise<void> {
+        const tasks = await this.jiraService.searchTasks(query, exclude);
         await this.displayAndHandleTasks(tasks);
     }
 
@@ -445,6 +476,10 @@ export class TasksCommand {
         return this.jiraService.getAvailableTransitions(taskId);
     }
 
+    async createSubtask(parentId: string, summary: string, description: string): Promise<void> {
+        await this.jiraService.createSubtask(parentId, summary, description);
+    }
+
     async changeStatus(taskId: string, transitionId: string): Promise<void> {
         return this.jiraService.changeStatus(taskId, transitionId);
     }
@@ -523,6 +558,12 @@ export class TasksCommand {
     async commitChanges(task: JiraTask): Promise<'back' | void> {
         const commitCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
         try {
+            const currentBranch = await this.gitService.getCurrentBranch();
+            if (currentBranch !== task.key) {
+                console.log(chalk.red(`Error: You are not on the task's branch (${task.key}). Current branch is ${currentBranch}.`));
+                return;
+            }
+
             const { type } = await inquirer.prompt([{
                 type: 'list',
                 name: 'type',
@@ -561,6 +602,77 @@ export class TasksCommand {
             console.log(chalk.green(`Changes committed with message: ${commitMessage}`));
         } finally {
             commitCleanup();
+        }
+    }
+
+    async createPullRequest(task: JiraTask): Promise<'back' | void> {
+        const prCleanup = this.setupKeyboardShortcuts(() => this.showTaskActions(task));
+        try {
+            const currentBranch = await this.gitService.getCurrentBranch();
+            if (currentBranch !== task.key) {
+                console.log(chalk.red(`Error: You are not on the task's branch (${task.key}). Current branch is ${currentBranch}.`));
+                return;
+            }
+
+            await this.gitService.push(currentBranch);
+
+            const lastCommitMessage = await this.gitService.getLastCommitMessage();
+            const defaultBranch = await this.gitService.getDefaultBranch();
+
+            let prTitle = lastCommitMessage;
+            const prBody = `Resolves [${task.key}](${this.jiraService.getTaskUrl(task.key)})`;
+
+            if (!this.validateCommitMessage(lastCommitMessage, task.key)) {
+                console.log(chalk.yellow(`
+Warning: The last commit message does not follow the convention:`));
+                console.log(chalk.yellow(`  Expected: [type] ${task.key} | optional_details`));
+                console.log(chalk.yellow(`  Found: ${lastCommitMessage}
+`));
+
+                const { confirmProceed } = await inquirer.prompt([{
+                    type: 'confirm',
+                    name: 'confirmProceed',
+                    message: 'Do you want to create the Pull Request anyway?',
+                    default: false
+                }]);
+
+                if (!confirmProceed) {
+                    console.log(chalk.yellow('Pull Request creation cancelled.'));
+                    return;
+                }
+            }
+
+            console.log(chalk.blue('--- Pull Request Details ---'));
+            console.log(`${chalk.blue('Title:')} ${prTitle}`);
+            console.log(`${chalk.blue('Body:')} ${prBody}`);
+            console.log(`${chalk.blue('Head Branch:')} ${currentBranch}`);
+            console.log(`${chalk.blue('Base Branch:')} ${defaultBranch}`);
+            console.log(chalk.blue('----------------------------'));
+
+            const { confirmCreate } = await inquirer.prompt([{
+                type: 'confirm',
+                name: 'confirmCreate',
+                message: 'Do you want to create this Pull Request?',
+                default: true
+            }]);
+
+            if (!confirmCreate) {
+                console.log(chalk.yellow('Pull Request creation cancelled.'));
+                return;
+            }
+
+            const pr = await this.githubService.createPullRequest(
+                currentBranch,
+                prTitle,
+                prBody,
+                defaultBranch
+            );
+
+            console.log(chalk.green(`Successfully created pull request: ${pr.html_url}`))
+        } catch (error: any) {
+            console.error(chalk.red(`Error creating pull request: ${error.message}`));
+        } finally {
+            prCleanup();
         }
     }
 }

@@ -231,12 +231,18 @@ export class JiraService {
         this.config.set('jiraConfig', config);
     }
 
-    async searchTasks(query: string): Promise<JiraTask[]> {
+    async searchTasks(query: string, exclude?: string): Promise<JiraTask[]> {
         try {
+            let jql = `summary ~ "${query}"`;
+            if (exclude) {
+                jql += ` AND summary !~ "${exclude}"`;
+            }
+            jql += ` ORDER BY updated DESC`;
+
             const result = await this.fetchFromJira('search', {
                 method: 'POST',
                 body: JSON.stringify({
-                    jql: `text ~ "${query}" ORDER BY updated DESC`,
+                    jql,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });

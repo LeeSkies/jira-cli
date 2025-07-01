@@ -15,12 +15,13 @@ program
     .version('1.0.0')
     .option('-t, --task <taskId>', 'Specific task ID to manage')
     .option('-u, --update', 'Update the specified task')
-    .option('-s, --subtask', 'Add subtask to the specified task')
+    .option('-s, --search <query>', 'Search tasks by title')
+    .option('--subtask', 'Add subtask to the specified task')
     .option('-d, --delete', 'Delete the specified task')
     .option('-c, --change-status', 'Change status of the specified task')
     .option('-a, --all', 'Show all tasks from all users')
-    .option('--status [status]', 'Filter tasks by status')
-    .option('--search <query>', 'Search tasks by key, title, or description');
+    .option('--status [status]')
+    .option('-n, --exclude <query>', 'Exclude results with specified terms')
 
 program
     .command('config')
@@ -75,10 +76,27 @@ program.action(async (options) => {
                 await tasksCommand.changeStatus(task.key, transitionId);
                 return;
             }
+
+            if (options.subtask) {
+                const { summary, description } = await inquirer.prompt([
+                    {
+                        type: 'input',
+                        name: 'summary',
+                        message: 'Enter subtask summary:'
+                    },
+                    {
+                        type: 'input',
+                        name: 'description',
+                        message: 'Enter subtask description:'
+                    }
+                ]);
+                await tasksCommand.createSubtask(options.task, summary, description);
+                return;
+            }
             
             await tasksCommand.execute(options.task, options);
         } else if (options.search) {
-            await tasksCommand.search(options.search);
+            await tasksCommand.search(options.search, options.exclude);
         } else {
             await tasksCommand.execute(undefined, options);
         }
