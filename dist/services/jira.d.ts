@@ -17,11 +17,14 @@ export declare class JiraService {
     getTaskUrl(taskKey: string): string;
     openInBrowser(taskKey: string): Promise<void>;
     saveConfig(config: JiraConfig): void;
+    getConfig(): JiraConfig | undefined;
     searchTasks(query: string, exclude?: string): Promise<JiraTask[]>;
     getTasksByStatus(status: string): Promise<JiraTask[]>;
-    getAllTasks(): Promise<JiraTask[]>;
+    getTasksByAssignee(accountId: string): Promise<JiraTask[]>;
+    getTasksByFilters(assigneeId?: string, status?: string): Promise<JiraTask[]>;
     getAvailableStatuses(): Promise<string[]>;
     getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']>;
     searchUsers(query: string, projectKey?: string): Promise<any[]>;
     assignTask(taskId: string, accountId: string): Promise<void>;
+    getProjects(): Promise<any[]>;
 }

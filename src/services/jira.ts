@@ -231,6 +231,10 @@ export class JiraService {
         this.config.set('jiraConfig', config);
     }
 
+    getConfig(): JiraConfig | undefined {
+        return this.config.get('jiraConfig');
+    }
+
     async searchTasks(query: string, exclude?: string): Promise<JiraTask[]> {
         try {
             let jql = `summary ~ "${query}"`;
@@ -269,18 +273,51 @@ export class JiraService {
         }
     }
 
-    async getAllTasks(): Promise<JiraTask[]> {
+    async getTasksByAssignee(accountId: string): Promise<JiraTask[]> {
         try {
             const result = await this.fetchFromJira('search', {
                 method: 'POST',
                 body: JSON.stringify({
-                    jql: 'ORDER BY updated DESC',
+                    jql: `assignee = "${accountId}" ORDER BY updated DESC`,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });
             return result.issues;
         } catch (error: any) {
-            console.error(chalk.red(`Error fetching all tasks: ${error.message}`));
+            console.error(chalk.red(`Error fetching tasks by assignee: ${error.message}`));
+            return [];
+        }
+    }
+
+    async getTasksByFilters(assigneeId?: string, status?: string): Promise<JiraTask[]> {
+        try {
+            let jql = '';
+            const conditions = [];
+
+            if (assigneeId) {
+                conditions.push(`assignee = "${assigneeId}"`);
+            }
+
+            if (status) {
+                conditions.push(`status = "${status}"`);
+            }
+
+            if (conditions.length > 0) {
+                jql = conditions.join(' AND ') + ' ORDER BY updated DESC';
+            } else {
+                jql = 'ORDER BY updated DESC'; // Default to all tasks if no filters
+            }
+
+            const result = await this.fetchFromJira('search', {
+                method: 'POST',
+                body: JSON.stringify({
+                    jql,
+                    fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
+                })
+            });
+            return result.issues;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching tasks by filters: ${error.message}`));
             return [];
         }
     }
@@ -307,12 +344,21 @@ export class JiraService {
 
     async searchUsers(query: string, projectKey?: string): Promise<any[]> {
         try {
+            const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
+            const defaultProjectKey = jiraConfig?.defaultProjectKey;
+
             const queryParams = new URLSearchParams({
                 maxResults: '1000'  // Get a large number of users
             });
             
-            if (projectKey) {
-                queryParams.append('project', projectKey);
+            let effectiveProjectKey = projectKey || defaultProjectKey;
+
+            if (effectiveProjectKey) {
+                queryParams.append('project', effectiveProjectKey);
+            }
+
+            if (query) {
+                queryParams.append('query', query);
             }
 
             const users = await this.fetchFromJira(`user/assignable/search?${queryParams.toString()}`);
@@ -332,6 +378,16 @@ export class JiraService {
             console.log(chalk.green('Task assigned successfully!'));
         } catch (error: any) {
             console.error(chalk.red(`Error assigning task: ${error.message}`));
+        }
+    }
+
+    async getProjects(): Promise<any[]> {
+        try {
+            const result = await this.fetchFromJira('project');
+            return result;
+        } catch (error: any) {
+            console.error(chalk.red(`Error fetching projects: ${error.message}`));
+            return [];
         }
     }
 }

@@ -50,7 +50,8 @@ export class TasksCommand {
             choices: [
                 { name: 'View task again', value: 'view-again' },
                 { name: 'Back to tasks list', value: 'back' }
-            ]
+            ],
+            loop: false
         }]);
         return nextAction;
     }
@@ -152,7 +153,8 @@ export class TasksCommand {
                 choices: users.map(u => ({
                     name: u.displayName,
                     value: u.accountId
-                }))
+                })),
+                loop: false
             }]);
 
             await this.jiraService.assignTask(task.key, selectedUser);
@@ -455,7 +457,7 @@ export class TasksCommand {
             } else {
                 let tasks;
                 if (options.all) {
-                    tasks = await this.jiraService.getAllTasks();
+                    tasks = await this.jiraService.getTasksByFilters(undefined, undefined);
                 } else if (options.status) {
                     tasks = await this.jiraService.getTasksByStatus(options.status);
                 } else {
@@ -579,7 +581,8 @@ export class TasksCommand {
                     'refactor',
                     'perf',
                     'test'
-                ]
+                ],
+                loop: false
             }]);
 
             const { details } = await inquirer.prompt([{

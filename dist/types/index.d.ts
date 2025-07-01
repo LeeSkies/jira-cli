@@ -1,8 +1,9 @@
 export interface JiraConfig {
+    baseUrl: string;
     email: string;
     apiKey: string;
-    baseUrl: string;
     githubToken?: string;
+    defaultProjectKey?: string;
 }
 export interface JiraComment {
     id: string;

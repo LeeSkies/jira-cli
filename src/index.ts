@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import { TasksCommand } from './commands/tasks';
 import { ConfigCommand } from './commands/config';
+import { FilterCommand } from './commands/filter';
 import chalk from 'chalk';
 
 const program = new Command();
@@ -22,6 +23,7 @@ program
     .option('-a, --all', 'Show all tasks from all users')
     .option('--status [status]')
     .option('-n, --exclude <query>', 'Exclude results with specified terms')
+    .option('-f, --filter [type]', 'Filter tasks by user or status')
 
 program
     .command('config')
@@ -97,6 +99,11 @@ program.action(async (options) => {
             await tasksCommand.execute(options.task, options);
         } else if (options.search) {
             await tasksCommand.search(options.search, options.exclude);
+        } else if (options.filter) {
+            const filterCommand = new FilterCommand();
+            // If -f is used without an argument, commander passes true. Convert to undefined.
+            const filterArg = options.filter === true ? undefined : options.filter;
+            await filterCommand.execute(filterArg);
         } else {
             await tasksCommand.execute(undefined, options);
         }
