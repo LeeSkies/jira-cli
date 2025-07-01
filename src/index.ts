@@ -5,6 +5,7 @@ import inquirer from 'inquirer';
 import { TasksCommand } from './commands/tasks';
 import { ConfigCommand } from './commands/config';
 import { FilterCommand } from './commands/filter';
+import { CacheCommand } from './commands/cache';
 import chalk from 'chalk';
 
 const program = new Command();
@@ -31,6 +32,14 @@ program
     .action(async () => {
         const command = new ConfigCommand();
         await command.execute();
+    });
+
+program
+    .command('cache [type]')
+    .description('Manage CLI cache (e.g., clear users, statuses, projects, or all)')
+    .action(async (type) => {
+        const command = new CacheCommand();
+        await command.execute(type);
     });
 
 // Default action (no command specified)

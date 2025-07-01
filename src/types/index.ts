@@ -4,6 +4,7 @@ export interface JiraConfig {
     apiKey: string;
     githubToken?: string;
     defaultProjectKey?: string;
+    cacheDurationDays?: number;
 }
 
 export interface JiraComment {

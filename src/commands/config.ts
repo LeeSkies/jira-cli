@@ -40,6 +40,20 @@ export class ConfigCommand {
                 name: 'githubToken',
                 message: 'Enter your GitHub Personal Access Token (optional):',
                 default: currentConfig?.githubToken
+            },
+            {
+                type: 'input',
+                name: 'cacheDurationDays',
+                message: 'Enter cache duration in days (e.g., 7 for a week, 0 to disable caching):',
+                default: currentConfig?.cacheDurationDays ?? 7,
+                validate: (input) => {
+                    const num = Number(input);
+                    if (isNaN(num) || num < 0) {
+                        return 'Please enter a valid positive number for cache duration.';
+                    }
+                    return true;
+                },
+                filter: Number
             }
         ]);
 

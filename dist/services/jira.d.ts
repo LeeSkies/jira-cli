@@ -1,6 +1,7 @@
 import { JiraConfig, JiraTask } from '../types';
 export declare class JiraService {
     private config;
+    private cacheService;
     constructor();
     private fetchFromJira;
     getTask(taskId: string): Promise<JiraTask | null>;

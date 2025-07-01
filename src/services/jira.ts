@@ -1,14 +1,19 @@
 import ConfigStore from 'configstore';
 import { JiraConfig, JiraTask } from '../types';
+import { CacheService } from './cache';
 import chalk from 'chalk';
 import { spawn, type ChildProcess, type SpawnOptions } from 'child_process';
 import { platform } from 'os';
 
 export class JiraService {
     private config: ConfigStore;
+    private cacheService: CacheService;
 
     constructor() {
         this.config = new ConfigStore('jira-cli');
+        const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
+        const cacheDurationDays = jiraConfig?.cacheDurationDays ?? 7;
+        this.cacheService = new CacheService(cacheDurationDays);
     }
 
     private async fetchFromJira(path: string, options: RequestInit = {}) {
@@ -323,9 +328,17 @@ export class JiraService {
     }
 
     async getAvailableStatuses(): Promise<string[]> {
+        const cacheKey = 'jira_statuses';
+        const cachedStatuses = this.cacheService.get<string[]>(cacheKey);
+        if (cachedStatuses) {
+            return cachedStatuses;
+        }
+
         try {
             const result = await this.fetchFromJira('status');
-            return result.map((status: any) => status.name);
+            const fetchedStatuses = result.map((status: any) => status.name);
+            this.cacheService.set(cacheKey, fetchedStatuses);
+            return fetchedStatuses;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching statuses: ${error.message}`));
             return ['To Do', 'In Progress', 'Done']; // Fallback to default statuses
@@ -343,6 +356,12 @@ export class JiraService {
     }
 
     async searchUsers(query: string, projectKey?: string): Promise<any[]> {
+        const cacheKey = `jira_users_${projectKey || 'no_project'}_${query || 'all'}`;
+        const cachedUsers = this.cacheService.get<any[]>(cacheKey);
+        if (cachedUsers) {
+            return cachedUsers;
+        }
+
         try {
             const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
             const defaultProjectKey = jiraConfig?.defaultProjectKey;
@@ -361,8 +380,9 @@ export class JiraService {
                 queryParams.append('query', query);
             }
 
-            const users = await this.fetchFromJira(`user/assignable/search?${queryParams.toString()}`);
-            return users;
+            const fetchedUsers = await this.fetchFromJira(`user/assignable/search?${queryParams.toString()}`);
+            this.cacheService.set(cacheKey, fetchedUsers);
+            return fetchedUsers;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching users: ${error.message}`));
             return [];
@@ -382,9 +402,17 @@ export class JiraService {
     }
 
     async getProjects(): Promise<any[]> {
+        const cacheKey = 'jira_projects';
+        const cachedProjects = this.cacheService.get<any[]>(cacheKey);
+        if (cachedProjects) {
+            return cachedProjects;
+        }
+
         try {
             const result = await this.fetchFromJira('project');
-            return result;
+            const fetchedProjects = result;
+            this.cacheService.set(cacheKey, fetchedProjects);
+            return fetchedProjects;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching projects: ${error.message}`));
             return [];
