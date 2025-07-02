@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { JiraService } from '../services/jira';
 import { GitService } from '../services/git';
 import { GithubService } from '../services/github';
-import { JiraTask } from '../types';
+import { JiraTask, JiraUser, JiraTransition } from '../types';
 
 export class TasksCommand {
     private jiraService: JiraService;
@@ -139,7 +139,7 @@ export class TasksCommand {
             
             // Get all users without requiring a search
             console.log(chalk.yellow('\nFetching users...'));
-            const users = await this.jiraService.searchUsers('', projectKey);
+            const users: JiraUser[] = await this.jiraService.searchUsers('', projectKey);
             if (users.length === 0) {
                 console.log(chalk.yellow('\nNo users found'));
                 cleanup();
@@ -167,7 +167,7 @@ export class TasksCommand {
         const isGitAvailable = await this.gitService.isGitRepo();
         const isSubtask = task.fields.issuetype.name === 'Subtask' || task.fields.issuetype?.subtask === true;
         
-        const { action } = await inquirer.prompt([{
+        const { action }: { action: string } = await inquirer.prompt([{
             type: 'list',
             name: 'action',
             message: 'Select an action:',
@@ -408,7 +408,7 @@ export class TasksCommand {
         }
     }
 
-    async execute(taskId?: string, options: any = {}) {
+    async execute(taskId?: string, options: { update?: boolean, subtask?: boolean, delete?: boolean, all?: boolean, status?: string, search?: string, exclude?: string } = {}) {
         try {
             if (taskId) {
                 const task = await this.jiraService.getTask(taskId);

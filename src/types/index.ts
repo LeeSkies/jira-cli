@@ -1,3 +1,8 @@
+export interface GithubPullRequest {
+    html_url?: string;
+    // Add other fields as needed
+}
+
 export interface JiraConfig {
     baseUrl: string;
     email: string;
@@ -9,64 +14,53 @@ export interface JiraConfig {
 
 export interface JiraComment {
     id: string;
-    body: string;
-    author: {
-        displayName: string;
-    };
+    author: { displayName: string };
     created: string;
+    body: string;
+}
+
+export interface JiraIssueType {
+    id: string;
+    name: string;
+    subtask: boolean;
+}
+
+export interface JiraStatus {
+    id: string;
+    name: string;
+}
+
+export interface JiraProject {
+    id: string;
+    key: string;
+    name: string;
+}
+
+export interface JiraUser {
+    accountId: string;
+    displayName: string;
+    emailAddress: string;
+}
+
+export interface JiraTransition {
+    id: string;
+    name: string;
+    to: JiraStatus;
 }
 
 export interface JiraTask {
-    id: string;
     key: string;
+    id: string;
     fields: {
         summary: string;
         description: string;
+        issuetype: JiraIssueType;
+        status: JiraStatus;
+        comment?: { comments: JiraComment[] };
+        attachment?: { total: number };
+        parent?: { key: string; fields: { summary: string } };
         subtasks: JiraTask[];
-        issuetype: {
-            id: string;
-            name: string;
-            subtask: boolean;
-        };
-        status: {
-            id: string;
-            name: string;
-            statusCategory: {
-                key: string;
-            };
-        };
-        comment?: {
-            comments: JiraComment[];
-            total: number;
-        };
-        attachment?: {
-            total: number;
-            items: Array<{
-                id: string;
-                filename: string;
-                content: string;
-            }>;
-        };
-        parent?: {
-            id: string;
-            key: string;
-            fields: {
-                summary: string;
-            };
-        };
-        sprint?: {
-            id: number;
-            name: string;
-            state: string;
-        };
-        customfield_10020?: any; // Sprint field
+        customfield_10020?: Array<{ name: string; state: string }>; // Assuming this is for Sprint
     };
-    transitions?: {
-        id: string;
-        name: string;
-        to: {
-            id: string;
-            name: string;
-        };
-    }[];
+    transitions?: JiraTransition[];
 }

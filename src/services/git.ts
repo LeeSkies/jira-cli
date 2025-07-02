@@ -48,7 +48,7 @@ export class GitService {
         try {
             // Merge the source branch
             await execAsync(`git merge ${sourceBranch}`);
-        } catch (error) {
+        } catch (error: any) {
             // If merge fails, try to abort and switch back
             try {
                 await execAsync('git merge --abort');

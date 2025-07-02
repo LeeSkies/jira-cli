@@ -14,7 +14,15 @@ export declare class TasksCommand {
     getAvailableStatuses(): Promise<string[]>;
     search(query: string, exclude?: string): Promise<void>;
     displayAndHandleTasks(tasks: JiraTask[]): Promise<void>;
-    execute(taskId?: string, options?: any): Promise<void>;
+    execute(taskId?: string, options?: {
+        update?: boolean;
+        subtask?: boolean;
+        delete?: boolean;
+        all?: boolean;
+        status?: string;
+        search?: string;
+        exclude?: string;
+    }): Promise<void>;
     getTask(taskId: string): Promise<JiraTask | null>;
     getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']>;
     createSubtask(parentId: string, summary: string, description: string): Promise<void>;

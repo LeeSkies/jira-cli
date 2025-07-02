@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { JiraService } from '../services/jira';
 import { TasksCommand } from './tasks';
+import { JiraUser } from '../types';
 
 export class FilterCommand {
     private jiraService: JiraService;
@@ -21,7 +22,7 @@ export class FilterCommand {
             if (!filterType) { // No filter type specified, prompt for both
                 // Prompt for user
                 console.log(chalk.yellow('Fetching users...'));
-                const users = await this.jiraService.searchUsers('');
+                const users: JiraUser[] = await this.jiraService.searchUsers('');
                 const userChoices = [{ name: 'All', value: 'all' }].concat(users.map((user: any) => ({
                     name: user.displayName,
                     value: user.accountId
@@ -54,7 +55,7 @@ export class FilterCommand {
                 const lowerCaseFilterType = filterType.toLowerCase();
                 if (lowerCaseFilterType === 'user') { // Filter by user only
                     console.log(chalk.yellow('Fetching users...'));
-                    const users = await this.jiraService.searchUsers('');
+                    const users: JiraUser[] = await this.jiraService.searchUsers('');
                     const userChoices = [{ name: 'All', value: 'all' }].concat(users.map((user: any) => ({
                         name: user.displayName,
                         value: user.accountId

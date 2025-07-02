@@ -1,4 +1,4 @@
-import { JiraConfig, JiraTask } from '../types';
+import { JiraConfig, JiraTask, JiraTransition, JiraUser, JiraProject } from '../types';
 export declare class JiraService {
     private config;
     private cacheService;
@@ -24,8 +24,8 @@ export declare class JiraService {
     getTasksByAssignee(accountId: string): Promise<JiraTask[]>;
     getTasksByFilters(assigneeId?: string, status?: string): Promise<JiraTask[]>;
     getAvailableStatuses(): Promise<string[]>;
-    getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']>;
-    searchUsers(query: string, projectKey?: string): Promise<any[]>;
+    getAvailableTransitions(taskId: string): Promise<JiraTransition[]>;
+    searchUsers(query: string, projectKey?: string): Promise<JiraUser[]>;
     assignTask(taskId: string, accountId: string): Promise<void>;
-    getProjects(): Promise<any[]>;
+    getProjects(): Promise<JiraProject[]>;
 }

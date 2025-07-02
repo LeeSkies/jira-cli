@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { JiraService } from '../services/jira';
-import { JiraConfig } from '../types';
+import { JiraConfig, JiraProject } from '../types';
 
 export class ConfigCommand {
     private jiraService: JiraService;
@@ -61,7 +61,7 @@ export class ConfigCommand {
         this.jiraService.saveConfig(answers); // Save temporarily to allow project fetching
 
         console.log(chalk.yellow('Fetching your Jira projects...'));
-        const projects = await this.jiraService.getProjects();
+        const projects: JiraProject[] = await this.jiraService.getProjects();
 
         if (projects.length === 0) {
             console.log(chalk.yellow('No projects found. Please ensure your credentials are correct and you have access to projects.'));

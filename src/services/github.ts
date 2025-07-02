@@ -1,5 +1,5 @@
 import ConfigStore from 'configstore';
-import { JiraConfig, JiraTask } from '../types';
+import { JiraConfig, GithubPullRequest } from '../types';
 import { GitService } from './git';
 import chalk from 'chalk';
 
@@ -22,7 +22,7 @@ export class GithubService {
         return { owner: match[1], name: match[2] };
     }
 
-    async createPullRequest(head: string, title: string, body: string, base: string) {
+    async createPullRequest(head: string, title: string, body: string, base: string): Promise<GithubPullRequest> {
         const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
         if (!jiraConfig.githubToken) {
             throw new Error('GitHub token not found. Please run "jira config" to set it.');
@@ -45,7 +45,7 @@ export class GithubService {
             }),
         });
 
-        const responseJson = await response.json();
+        const responseJson: { message?: string; errors?: any[]; html_url?: string } = await response.json();
 
         if (!response.ok) {
             throw new Error(`GitHub API Error: ${responseJson.message} (${JSON.stringify(responseJson.errors)})`);

@@ -1,5 +1,5 @@
 import ConfigStore from 'configstore';
-import { JiraConfig, JiraTask } from '../types';
+import { JiraConfig, JiraTask, JiraIssueType, JiraTransition, JiraUser, JiraProject } from '../types';
 import { CacheService } from './cache';
 import chalk from 'chalk';
 import { spawn, type ChildProcess, type SpawnOptions } from 'child_process';
@@ -16,7 +16,7 @@ export class JiraService {
         this.cacheService = new CacheService(cacheDurationDays);
     }
 
-    private async fetchFromJira(path: string, options: RequestInit = {}) {
+    private async fetchFromJira<T>(path: string, options: RequestInit = {}): Promise<T | null> {
         const jiraConfig = this.config.get('jiraConfig') as JiraConfig;
         if (!jiraConfig) {
             throw new Error('JIRA configuration not found. Please run "jira config" first.');
@@ -48,7 +48,7 @@ export class JiraService {
 
     async getTask(taskId: string): Promise<JiraTask | null> {
         try {
-            return await this.fetchFromJira(
+            return await this.fetchFromJira<JiraTask>(
                 `issue/${taskId}?fields=summary,description,subtasks,issuetype,status,comment,attachment,parent,customfield_10020&expand=transitions`
             );
         } catch (error: any) {
@@ -59,7 +59,7 @@ export class JiraService {
 
     async getTasks(): Promise<JiraTask[]> {
         try {
-            const result = await this.fetchFromJira('search', {
+            const tasksResult = await this.fetchFromJira<{ issues: JiraTask[] }>('search', {
                 method: 'POST',
                 body: JSON.stringify({
                     jql: 'assignee = currentUser() ORDER BY updated DESC',
@@ -67,7 +67,10 @@ export class JiraService {
                     expand: ['transitions']
                 })
             });
-            return result.issues;
+            if (!tasksResult) {
+                return [];
+            }
+            return tasksResult.issues;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching tasks: ${error.message}`));
             return [];
@@ -95,15 +98,16 @@ export class JiraService {
         try {
             const projectKey = parentId.split('-')[0];
             
-            const metadata = await this.fetchFromJira(`issue/createmeta?projectKeys=${projectKey}&expand=projects.issuetypes`);
+            const result = await this.fetchFromJira<any>(`issue/createmeta?projectKeys=${projectKey}&expand=projects.issuetypes`);
+            const metadata = result as { projects: Array<{ key: string, issuetypes: JiraIssueType[] }> };
             const project = metadata.projects[0];
-            const subtaskType = project.issuetypes.find((type: any) => type.subtask === true);
+            const subtaskType = project.issuetypes.find((type: JiraIssueType) => type.subtask === true);
 
             if (!subtaskType) {
                 throw new Error('Subtask type not found in project');
             }
 
-            const result = await this.fetchFromJira('issue', {
+            const createIssueResult = await this.fetchFromJira('issue', {
                 method: 'POST',
                 body: JSON.stringify({
                     fields: {
@@ -248,14 +252,17 @@ export class JiraService {
             }
             jql += ` ORDER BY updated DESC`;
 
-            const result = await this.fetchFromJira('search', {
+            const searchResult = await this.fetchFromJira<{ issues: JiraTask[] }>('search', {
                 method: 'POST',
                 body: JSON.stringify({
                     jql,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });
-            return result.issues;
+            if (!searchResult) {
+                return [];
+            }
+            return searchResult.issues;
         } catch (error: any) {
             console.error(chalk.red(`Error searching tasks: ${error.message}`));
             return [];
@@ -264,14 +271,17 @@ export class JiraService {
 
     async getTasksByStatus(status: string): Promise<JiraTask[]> {
         try {
-            const result = await this.fetchFromJira('search', {
+            const statusResult = await this.fetchFromJira<{ issues: JiraTask[] }>('search', {
                 method: 'POST',
                 body: JSON.stringify({
                     jql: `status = "${status}" ORDER BY updated DESC`,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });
-            return result.issues;
+            if (!statusResult) {
+                return [];
+            }
+            return statusResult.issues;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching tasks by status: ${error.message}`));
             return [];
@@ -280,14 +290,17 @@ export class JiraService {
 
     async getTasksByAssignee(accountId: string): Promise<JiraTask[]> {
         try {
-            const result = await this.fetchFromJira('search', {
+            const assigneeResult = await this.fetchFromJira<{ issues: JiraTask[] }>('search', {
                 method: 'POST',
                 body: JSON.stringify({
                     jql: `assignee = "${accountId}" ORDER BY updated DESC`,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });
-            return result.issues;
+            if (!assigneeResult) {
+                return [];
+            }
+            return assigneeResult.issues;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching tasks by assignee: ${error.message}`));
             return [];
@@ -313,14 +326,17 @@ export class JiraService {
                 jql = 'ORDER BY updated DESC'; // Default to all tasks if no filters
             }
 
-            const result = await this.fetchFromJira('search', {
+            const filterResult = await this.fetchFromJira<{ issues: JiraTask[] }>('search', {
                 method: 'POST',
                 body: JSON.stringify({
                     jql,
                     fields: ['summary', 'description', 'subtasks', 'issuetype', 'status', 'parent', 'customfield_10020']
                 })
             });
-            return result.issues;
+            if (!filterResult) {
+                return [];
+            }
+            return filterResult.issues;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching tasks by filters: ${error.message}`));
             return [];
@@ -335,8 +351,11 @@ export class JiraService {
         }
 
         try {
-            const result = await this.fetchFromJira('status');
-            const fetchedStatuses = result.map((status: any) => status.name);
+            const statusResult = await this.fetchFromJira<Array<{ name: string }>>('status');
+            if (!statusResult) {
+                return [];
+            }
+            const fetchedStatuses = statusResult.map((status: { name: string }) => status.name);
             this.cacheService.set(cacheKey, fetchedStatuses);
             return fetchedStatuses;
         } catch (error: any) {
@@ -345,20 +364,23 @@ export class JiraService {
         }
     }
 
-    async getAvailableTransitions(taskId: string): Promise<JiraTask['transitions']> {
+    async getAvailableTransitions(taskId: string): Promise<JiraTransition[]> {
         try {
-            const result = await this.fetchFromJira(`issue/${taskId}/transitions`);
-            return result.transitions;
+            const transitionsResult = await this.fetchFromJira<{ transitions: JiraTransition[] }>(`issue/${taskId}/transitions`);
+            if (!transitionsResult) {
+                return [];
+            }
+            return transitionsResult.transitions;
         } catch (error: any) {
             console.error(chalk.red(`Error fetching transitions: ${error.message}`));
             return [];
         }
     }
 
-    async searchUsers(query: string, projectKey?: string): Promise<any[]> {
+    async searchUsers(query: string, projectKey?: string): Promise<JiraUser[]> {
         const cacheKey = `jira_users_${projectKey || 'no_project'}_${query || 'all'}`;
-        const cachedUsers = this.cacheService.get<any[]>(cacheKey);
-        if (cachedUsers) {
+        const cachedUsers = this.cacheService.get<JiraUser[]>(cacheKey);
+        if (cachedUsers !== null) {
             return cachedUsers;
         }
 
@@ -380,9 +402,9 @@ export class JiraService {
                 queryParams.append('query', query);
             }
 
-            const fetchedUsers = await this.fetchFromJira(`user/assignable/search?${queryParams.toString()}`);
+            const fetchedUsers = await this.fetchFromJira<JiraUser[]>(`user/assignable/search?${queryParams.toString()}`);
             this.cacheService.set(cacheKey, fetchedUsers);
-            return fetchedUsers;
+            return fetchedUsers || [];
         } catch (error: any) {
             console.error(chalk.red(`Error fetching users: ${error.message}`));
             return [];
@@ -401,18 +423,18 @@ export class JiraService {
         }
     }
 
-    async getProjects(): Promise<any[]> {
+    async getProjects(): Promise<JiraProject[]> {
         const cacheKey = 'jira_projects';
-        const cachedProjects = this.cacheService.get<any[]>(cacheKey);
-        if (cachedProjects) {
+        const cachedProjects = this.cacheService.get<JiraProject[]>(cacheKey);
+        if (cachedProjects !== null) {
             return cachedProjects;
         }
 
         try {
-            const result = await this.fetchFromJira('project');
-            const fetchedProjects = result;
+            const projectsResult = await this.fetchFromJira<JiraProject[]>('project');
+            const fetchedProjects = projectsResult;
             this.cacheService.set(cacheKey, fetchedProjects);
-            return fetchedProjects;
+            return fetchedProjects || [];
         } catch (error: any) {
             console.error(chalk.red(`Error fetching projects: ${error.message}`));
             return [];
