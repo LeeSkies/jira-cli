@@ -11,4 +11,5 @@ export declare class GitService {
     getLastCommitMessage(): Promise<string>;
     getDefaultBranch(): Promise<string>;
     push(branchName: string): Promise<void>;
+    listLocalBranches(): Promise<string[]>;
 }

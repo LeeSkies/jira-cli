@@ -98,4 +98,14 @@ export class GitService {
     async push(branchName: string): Promise<void> {
         await execAsync(`git push -u origin ${branchName}`);
     }
+
+    async listLocalBranches(): Promise<string[]> {
+        try {
+            const { stdout } = await execAsync('git branch --format="%(refname:short)"');
+            return stdout.trim().split('\n').filter(Boolean);
+        } catch (error: any) {
+            console.error(`Error listing local branches: ${error.message}`);
+            return [];
+        }
+    }
 }

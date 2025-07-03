@@ -620,7 +620,8 @@ export class TasksCommand {
             await this.gitService.push(currentBranch);
 
             const lastCommitMessage = await this.gitService.getLastCommitMessage();
-            const defaultBranch = await this.gitService.getDefaultBranch();
+            const jiraConfig = this.jiraService.getConfig();
+            const baseBranch = jiraConfig?.baseDevelopmentBranch || await this.gitService.getDefaultBranch();
 
             let prTitle = lastCommitMessage;
             const prBody = `Resolves [${task.key}](${this.jiraService.getTaskUrl(task.key)})`;
@@ -649,7 +650,7 @@ Warning: The last commit message does not follow the convention:`));
             console.log(`${chalk.blue('Title:')} ${prTitle}`);
             console.log(`${chalk.blue('Body:')} ${prBody}`);
             console.log(`${chalk.blue('Head Branch:')} ${currentBranch}`);
-            console.log(`${chalk.blue('Base Branch:')} ${defaultBranch}`);
+            console.log(`${chalk.blue('Base Branch:')} ${baseBranch}`);
             console.log(chalk.blue('----------------------------'));
 
             const { confirmCreate } = await inquirer.prompt([{
@@ -668,7 +669,7 @@ Warning: The last commit message does not follow the convention:`));
                 currentBranch,
                 prTitle,
                 prBody,
-                defaultBranch
+                baseBranch
             );
 
             console.log(chalk.green(`Successfully created pull request: ${pr.html_url}`))

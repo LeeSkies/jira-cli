@@ -2,12 +2,18 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { JiraService } from '../services/jira';
 import { JiraConfig, JiraProject } from '../types';
+import { GitService } from '../services/git';
+import inquirerPrompt from 'inquirer-autocomplete-prompt';
+
+inquirer.registerPrompt('autocomplete', inquirerPrompt);
 
 export class ConfigCommand {
     private jiraService: JiraService;
+    private gitService: GitService;
 
     constructor() {
         this.jiraService = new JiraService();
+        this.gitService = new GitService();
     }
 
     async execute(): Promise<void> {
@@ -85,9 +91,28 @@ export class ConfigCommand {
             loop: false
         }]);
 
+        let baseDevelopmentBranch: string | undefined;
+        const isGit = await this.gitService.isGitRepo();
+        console.log(`Is Git Repo: ${isGit}`);
+        const branches = isGit ? await this.gitService.listLocalBranches() : [];
+        console.log(`Branches found: ${branches.length}`);
+        console.log(`Branches: ${JSON.stringify(branches)}`);
+        const { selectedBranch } = await inquirer.prompt([{
+            type: 'autocomplete',
+            name: 'selectedBranch',
+            message: 'Select your base development branch for pull requests (e.g., develop, main): (optional)',
+            source: (answersSoFar: any, input: string) => {
+                return Promise.resolve(branches.filter(branch => branch.includes(input || '')));
+            },
+            default: currentConfig?.baseDevelopmentBranch || '',
+            pageSize: 20 // Display more branches
+        }]);
+        baseDevelopmentBranch = selectedBranch;
+
         const finalConfig: JiraConfig = {
             ...answers,
-            defaultProjectKey
+            defaultProjectKey,
+            baseDevelopmentBranch
         };
 
         this.jiraService.saveConfig(finalConfig);

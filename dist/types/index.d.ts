@@ -8,6 +8,7 @@ export interface JiraConfig {
     githubToken?: string;
     defaultProjectKey?: string;
     cacheDurationDays?: number;
+    baseDevelopmentBranch?: string;
 }
 export interface JiraComment {
     id: string;
